@@ -29,14 +29,14 @@ def clean_dataset(dataset: pd.core.frame.DataFrame, type='default') -> pd.core.f
     """
     if type == 'default':
         # Deletes all rows with missing values
-        return dataset[(dataset == '?').sum(axis=1) == 0]
+        return dataset[(dataset == np.NaN).sum(axis=1) == 0]
     elif type == 'backfill':
         # Applies pandas method of backfilling
-        dataset = dataset.replace(to_replace='?', value=np.NaN)
+        #dataset = dataset.replace(to_replace=np.NaN, value=np.NaN)
         return dataset.fillna(method='backfill', axis=1)
     elif type == 'mean':
         # Replaces missing values with the mean of the column
-        dataset = dataset.replace(to_replace='?', value=np.NaN)
+        #dataset = dataset.replace(to_replace=np.NaN, value=np.NaN)
         return dataset.fillna(dataset.mean())
     else:
         print("::-> ERROR : clean_dataset - " + str(type) + " is not a valid option...")
@@ -51,12 +51,12 @@ def print_nulls(dataset: pd.core.frame.DataFrame, show_rows=True):
     counter = 0
     if show_rows is True:
         for index, row in enumerate(dataset.values):
-            if '?' in row:
+            if 'nan' in row:
                 print(str(index) + " " + str(row))
                 counter += 1
     else:
         for row in dataset.values:
-            if '?' in row:
+            if 'nan' in row:
                 counter += 1
     print("\n---------------------")
     print(" Total NULLS = " + str(counter))
