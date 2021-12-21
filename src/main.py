@@ -15,8 +15,8 @@ ap.add_argument("-dr", "--dont_remove_stop_words",  help="Does not remove stopwo
 ap.add_argument("-df", "--dont_remove_filter_words", help="Does not remove filter words", action='store_false')
 ap.add_argument("-t", "--test_size", type=float, default=0.2, help="Test size (default: 0.2)")
 ap.add_argument("-rs", "--random_state", type=int, default=42, help="Random state (default: 42)")
-ap.add_argument("-c", "--cross_validation", type=bool, default=False, help="Perform Cross validation (default: False)")
-ap.add_argument("-g", "--grid_search", type=bool, default=False, help="Perform Grid search (CPU Intensive) (default: False)")
+ap.add_argument("-c", "--cross_validation",  help="Perform Cross validation", action='store_true')
+ap.add_argument("-g", "--grid_search", help="Perform Grid search (CPU Intensive)", action='store_true')
 args = vars(ap.parse_args())
 
 verbose = args['verbose'] # verbose = 0 means minimal debug output. verbose = 1 means more debug output.
