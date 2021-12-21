@@ -1,68 +1,51 @@
-from utils.dataset_utils import *
-from algorithm.naive_bayes import *
+from nltk.corpus import stopwords
+import argparse
 
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score, precision_score, f1_score, recall_score
-import time
+from grid_and_cross_val_test import cross_val_score_and_grid
+from preprocessing import preprocessing
+from single_execution import single_execution_train_test
 
-path = '../data/FinalStemmedSentimentAnalysisDataset.csv'
-dataset_train = load_dataset(path, include_header=True)
-target_column = 'sentimentLabel'
+ap = argparse.ArgumentParser()
+ap.add_argument("-v", "--verbose", type=int, default=0, help="verbosity level of the program") # 0, 1, 2
+ap.add_argument("-s", "--smoothing", type=float, default=1, help="Laplace smoothing parameter (default: 1)")
+ap.add_argument("-m", "--max_word_frequency", type=int, default=-1, help="Maximum word frequency (default: -1 means no limit)")
+ap.add_argument("-r", "--remove_stop_words",  help="Remove stopwords", action='store_true')
+ap.add_argument("-f", "--remove_filter_words",  help="Remove filter words", action='store_true')
+ap.add_argument("-dr", "--dont_remove_stop_words",  help="Does not remove stopwords", action='store_false')
+ap.add_argument("-df", "--dont_remove_filter_words", help="Does not remove filter words", action='store_false')
+ap.add_argument("-t", "--test_size", type=float, default=0.2, help="Test size (default: 0.2)")
+ap.add_argument("-rs", "--random_state", type=int, default=42, help="Random state (default: 42)")
+ap.add_argument("-c", "--cross_validation", type=bool, default=False, help="Perform Cross validation (default: False)")
+ap.add_argument("-g", "--grid_search", type=bool, default=False, help="Perform Grid search (CPU Intensive) (default: False)")
+args = vars(ap.parse_args())
 
-print(dataset_train.isnull().sum())
-dataset_train = dataset_train.dropna()
-print(dataset_train.isnull().sum())
+verbose = args['verbose'] # verbose = 0 means minimal debug output. verbose = 1 means more debug output.
+lp_smoothing = args['smoothing'] # Laplace smoothing parameter for the naive Bayes classifier.
+max_word_frequency = args['max_word_frequency'] # Maximum word frequency for the naive Bayes classifier.
+remove_stop_words = args['remove_stop_words'] # Set to True to remove stopwords from the dictionary.
+remove_filter_words = args['remove_filter_words'] # Set to True to remove filter words from the dictionary
+test_size = args['test_size'] # Test size for the train/test split.
+random_state = args['random_state'] # Random state for the train/test split.
+make_cross_validation = args['cross_validation'] # Set to True to perform cross validation.
+make_grid_search = args['grid_search'] # Set to True to perform grid search.
 
-verbose = 0
-lp_smoothing = 0
-
-x = dataset_train.drop([target_column, 'tweetId', 'tweetDate'], 1)
-y = dataset_train[target_column].values.ravel()
-
-x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.25, random_state=0)
-
-naive_bayes = NaiveBayes(verbose=verbose, lp_smoothing=lp_smoothing, max_word_frequency=-1)
-
-start = time.time()
-naive_bayes.fit(x_train, y_train)
-end = time.time()
-
-print('Time taken to train: {}'.format(end - start))
-
-start = time.time()
-y_pred = naive_bayes.predict(x_test)
-end = time.time()
-
-print('Time taken to predict: {}'.format(end - start))
-
-start = time.time()
-_accuracy_score = naive_bayes.accuracy_score(y_test, y_pred)
-sk_accuracy_score = accuracy_score(y_test, y_pred)
-
-_recall_score = naive_bayes.recall_score(y_test, y_pred)
-sk_recall_score = recall_score(y_test, y_pred)
-
-_precision_score = naive_bayes.precision_score(y_test, y_pred)
-sk_precision_score = precision_score(y_test, y_pred)
+x, y = preprocessing()
 
 
-_f1_score = naive_bayes.f1_score(y_test, y_pred)
-sk_f1_score = f1_score(y_test, y_pred)
-end = time.time()
+if remove_filter_words:
+    filter_words = set(['https', 'http', 'co', 'com', 'amp', '@', '#', '$', '%', '^', '&', '*'])
+else:
+    filter_words = None
 
+if remove_stop_words:
+    stop_words = set(stopwords.words('english'))
+else:
+    stop_words = None
 
-print('Time taken to score: {}'.format(end - start))
-print('Accuracy Score:  My Implementation {} <-> sklearn {}'.format(_accuracy_score, sk_accuracy_score))
-print('Precision Score: My Implementation {} <-> sklearn {}'.format(_precision_score, sk_precision_score))
-print('Recall Score: My Implementation {} <-> sklearn {}'.format(_recall_score, sk_recall_score))
-print('f1 Score: My Implementation {} <-> sklearn {}'.format(_f1_score, sk_f1_score))
+if make_cross_validation:
+    print("Performing cross validation...")
+    cross_val_score_and_grid(x, y, verbose=verbose, lp_smoothing=lp_smoothing, max_word_frequency=max_word_frequency, stop_words=stop_words, filter_words=filter_words, make_cross_validation=make_cross_validation, make_grid_search=make_grid_search)
+else:
+    print("Performing single execution...")
+    single_execution_train_test(x, y, test_size, random_state=random_state, verbose=verbose, lp_smoothing=lp_smoothing, max_word_frequency=max_word_frequency, stop_words=stop_words, filter_words=filter_words)
 
-
-# # cross validation
-# from sklearn.model_selection import cross_val_score
-#
-# # do cross validation
-# scores = cross_val_score(naive_bayes, x, y, cv=10, scoring='accuracy')
-# print('Cross Validation Scores: {}'.format(scores))
-# print('Cross Validation Mean: {}'.format(scores.mean()))
-# print('Cross Validation Standard Deviation: {}'.format(scores.std()))

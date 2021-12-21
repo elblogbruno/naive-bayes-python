@@ -1,17 +1,35 @@
 from sklearn.base import BaseEstimator, ClassifierMixin
 
-from src.algorithm.calcul_utils import *
+from algorithm.calcul_utils import *
 import numpy as np
 import time
 
 
 class NaiveBayes(BaseEstimator, ClassifierMixin):
 
-    def __init__(self, verbose=0, lp_smoothing=1, max_word_frequency = -1):
-        print("Naive Bayes initialized with verbose: {} and lp_smoothing: {}".format(verbose, lp_smoothing))
+    def __init__(self, verbose=0, lp_smoothing=1, max_word_frequency=-1, stop_words=None, filter_words=None):
+
+        stop_word_use = stop_words is not None
+        filter_word_use = filter_words is not None
+
+        print("Naive Bayes initialized with verbose: {} - lp_smoothing: {} - max_word_frequency {} - removing "
+              "stop_words {} -  removing filter words {}".format(verbose, lp_smoothing, max_word_frequency,
+                                                                 stop_word_use, filter_word_use))
+
         self.lp_smoothing = lp_smoothing
         self.verbose = verbose
         self.max_word_frequency = max_word_frequency
+        self.stop_words = stop_words
+        self.filter_words = filter_words
+
+    def get_params(self, deep=True):
+        # suppose this estimator has parameters "alpha" and "recursive"
+        return {"lp_smoothing": self.lp_smoothing, "max_word_frequency": self.max_word_frequency}
+
+    def set_params(self, **parameters):
+        for parameter, value in parameters.items():
+            setattr(self, parameter, value)
+        return self
 
     def fit(self, X_train, y_train):
         if len(X_train) < 1:
@@ -32,7 +50,11 @@ class NaiveBayes(BaseEstimator, ClassifierMixin):
             print("Training data: ", len(self.X_train))
             start_time = time.time()
 
-        total_vocabulary, class_count, duplicated_class_count = get_vocabulary(self.X_train, y_train, self.target_values, self.max_word_frequency)
+        total_vocabulary = get_vocabulary(self.X_train, y_train, self.target_values, self.max_word_frequency,
+                                          self.stop_words, self.filter_words)
+        self.total_elements = len(self.y_train)
+
+        print("Total vocabulary: ", len(total_vocabulary))
 
         if self.verbose > 0:
             end_time = time.time()
@@ -40,9 +62,10 @@ class NaiveBayes(BaseEstimator, ClassifierMixin):
 
         start = time.time()
 
-        unique, counts = np.unique(self.y_train, return_counts=True)
+        unique, self.class_count = np.unique(self.y_train, return_counts=True)
 
-        self.total_probs = get_probability_table(len(y_train), total_vocabulary, duplicated_class_count, counts,  self.target_values, self.lp_smoothing, self.verbose)
+        self.total_probs = get_probability_table(self.total_elements, total_vocabulary, self.class_count,
+                                                 self.target_values, self.lp_smoothing, self.verbose)
         end = time.time()
 
         if self.verbose > 0:
@@ -52,7 +75,7 @@ class NaiveBayes(BaseEstimator, ClassifierMixin):
         if self.verbose > 1:
             print("total_probs: ", self.total_probs)
 
-    def __single_prediction(self, X_row, prob_word, target_values=None):
+    def __single_prediction(self, X_row, prob_word, class_prob, target_values=None):
         """"
         :param X_row:
         :param prob_word:
@@ -62,18 +85,14 @@ class NaiveBayes(BaseEstimator, ClassifierMixin):
         """
 
         for word in X_row.split():
-            if word in self.total_probs.keys():
+            word_prob = self.total_probs.get(word)
+            if word_prob:
                 for class_index in target_values:
-                    if self.verbose > 1:
-                        print("Calculating probability for word: {} and class: {}".format(word, class_index))
+                    word_conditional_prob = self.total_probs[word][class_index]
+                    prob_word[class_index] += word_conditional_prob
 
-                    if self.total_probs[word][class_index] == 0:
-                        prob_word[class_index] = 0
-                    else:
-                        prob_word[class_index] += np.log(self.total_probs[word][class_index])
-
-        if self.verbose > 1:
-            print("Probability for each class: ", prob_word)
+        for class_index in target_values:
+            prob_word[class_index] *= class_prob[class_index]
 
         return max(prob_word, key=prob_word.get)
 
@@ -87,17 +106,17 @@ class NaiveBayes(BaseEstimator, ClassifierMixin):
         pred = []
 
         prob_word = {}
+        class_prob = {}
 
         for class_index in self.target_values:
             prob_word[class_index] = 0.0
+            class_prob[class_index] = self.class_count[class_index] / self.total_elements  # We calculate the class
+            # probability once.  P(C)
 
         X_test = X_test.values.flatten()
 
         for row in X_test:
-            if self.verbose > 1:
-                print("Predicting value for row: {}".format(row))
-
-            x_class = self.__single_prediction(row, prob_word, self.target_values)
+            x_class = self.__single_prediction(row, prob_word, class_prob, self.target_values)
             pred.append(x_class)
 
         return pred
@@ -162,7 +181,7 @@ class NaiveBayes(BaseEstimator, ClassifierMixin):
         return tp / (tp + fn)
 
     # https://github.com/varunshenoy/simple-metrics
-    def precision_score(self, y_test , y_pred):
+    def precision_score(self, y_test, y_pred):
         """
         Calculates precision score tp / (tp + fp) where tp is the number of true positives and fp is the number of false positives.
         :param y_test:
@@ -176,10 +195,10 @@ class NaiveBayes(BaseEstimator, ClassifierMixin):
         tp = 0.0
 
         for (index, val) in enumerate(y_test):
-            if y_test[index] == 1 and y_pred[index] == 1: # true positive (tp) case - both are 1 in the test and
+            if y_test[index] == 1 and y_pred[index] == 1:  # true positive (tp) case - both are 1 in the test and
                 # predicted
                 tp += 1
-            elif y_test[index] == 0 and y_pred[index] == 1: # false positive as predicted positive but actual negative
+            elif y_test[index] == 0 and y_pred[index] == 1:  # false positive as predicted positive but actual negative
                 fp += 1
 
         return tp / (tp + fp)
